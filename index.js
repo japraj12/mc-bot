@@ -1,63 +1,74 @@
 const mineflayer = require("mineflayer")
 const AutoAuth = require("mineflayer-auto-auth")
+const express = require("express")
 
+const app = express()
+const PORT = process.env.PORT || 3000
+
+let bot
 let reconnecting = false
 
-function startBot () {
+function startBot() {
   reconnecting = false
 
   console.log("Bot starting...")
 
-  const bot = mineflayer.createBot({
+  bot = mineflayer.createBot({
     host: "play-LOVE.aternos.me",
     port: 50294,
     username: "BOT_XD",
-    version: false,          // auto-detect
-    onlineMode: false,       // REQUIRED for cracked
+    onlineMode: false,
+    version: false,
     plugins: [AutoAuth],
-    AutoAuth: "bot112022"    // cracked login password
+    AutoAuth: "bot112022"
   })
 
-  // ✅ SUCCESSFUL JOIN
   bot.once("spawn", () => {
-    console.log("Bot fully joined server!")
+    console.log("Bot joined server!")
 
-    // Anti-AFK (small jump every 30s)
     setInterval(() => {
+      if (!bot || !bot.entity) return
       bot.setControlState("jump", true)
       setTimeout(() => bot.setControlState("jump", false), 300)
     }, 30000)
   })
 
-  // ✅ AUTO LOGIN (backup safety)
-  bot.on("chat", (username, message) => {
-    if (message.toLowerCase().includes("register")) {
-      bot.chat("/register bot112022 bot112022")
-    }
-    if (message.toLowerCase().includes("login")) {
-      bot.chat("/login bot112022")
-    }
-  })
-
-  // ✅ CLEAN DISCONNECT HANDLING
   bot.on("end", () => {
     if (reconnecting) return
     reconnecting = true
 
-    console.log("Disconnected. Reconnecting in 15 seconds...")
+    console.log("Disconnected. Reconnecting in 15s...")
     setTimeout(() => {
-      process.exit(1) // Railway restarts it
+      process.exit(1)
     }, 15000)
   })
 
-  // LOG ONLY (no crash)
-  bot.on("kicked", reason => {
-    console.log("Kicked:", reason)
-  })
-
-  bot.on("error", err => {
-    console.log("Error:", err.message)
-  })
+  bot.on("kicked", r => console.log("Kicked:", r))
+  bot.on("error", e => console.log("Error:", e.message))
 }
 
 startBot()
+
+// 🌐 WEB CONTROL PANEL
+app.get("/", (req, res) => {
+  res.send(`
+    <h1>🤖 Minecraft Bot Control</h1>
+    <p>Status: ${bot && bot.player ? "ONLINE" : "OFFLINE"}</p>
+    <button onclick="location.href='/restart'">Restart Bot</button>
+    <button onclick="location.href='/reconnect'">Force Reconnect</button>
+  `)
+})
+
+app.get("/restart", (req, res) => {
+  res.send("Restarting bot...")
+  process.exit(1)
+})
+
+app.get("/reconnect", (req, res) => {
+  if (bot) bot.quit()
+  res.send("Reconnecting...")
+})
+
+app.listen(PORT, () => {
+  console.log("Web panel running on port", PORT)
+})
