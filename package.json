@@ -1,18 +1,18 @@
 {
-  "name": "mc-bot",
+  "name": "mc-bot-panel",
   "version": "1.0.0",
-  "description": "Minecraft Developer Panel Bot",
+  "description": "Minecraft Bot with Web Developer Panel",
   "main": "index.js",
   "type": "commonjs",
   "scripts": {
     "start": "node index.js"
   },
   "engines": {
-    "node": "22.x"
+    "node": "20.x || 22.x"
   },
   "dependencies": {
-    "express": "^4.18.2",
-    "express-session": "^1.17.3",
+    "express": "^4.19.2",
+    "express-session": "^1.18.0",
     "body-parser": "^1.20.2",
     "mineflayer": "^4.20.1",
     "mineflayer-auto-auth": "^2.0.0"
