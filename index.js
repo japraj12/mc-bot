@@ -5,163 +5,96 @@ const session = require("express-session");
 const bodyParser = require("body-parser");
 
 const app = express();
-const PORT = process.env.PORT || 3000;
-const PANEL_PASSWORD = "admin123"; // ← CHANGE THIS!
+const PORT = process.env.PORT || 8080;
+const PANEL_PASSWORD = "Paramjap@1217";
 
-let bot = null;
+let bot;
 let lastPing = 0;
 let lastTPS = 20;
 
-// ====================== EXPRESS SETUP ======================
-app.use(bodyParser.urlencoded({ extended: true }));
-app.use(express.static("public")); // optional, for future CSS
-
+app.use(bodyParser.urlencoded({ extended: false }));
 app.use(session({
-  secret: "supersecretkeychangeinproduction",
-  resave: false,
-  saveUninitialized: false,
-  cookie: { maxAge: 1000 * 60 * 60 * 24 } // 1 day
+    secret: "supersecretkey",
+    resave: false,
+    saveUninitialized: true
 }));
 
-function isAuthenticated(req, res, next) {
-  if (req.session.loggedIn) return next();
-  res.redirect("/login");
+function auth(req, res, next) {
+    if (req.session.loggedIn) return next();
+    res.redirect("/login");
 }
 
-// ====================== BOT FUNCTION ======================
 function createBot() {
-  if (bot) {
-    bot.quit();
-    bot = null;
-  }
-
-  bot = mineflayer.createBot({
-    host: "play-LOVE.aternos.me",
-    port: 50294,
-    username: "BOT_XD",
-    onlineMode: false,
-    version: false,           // Auto detect
-    plugins: [AutoAuth],
-    AutoAuth: "bot112022"     // Your server password
-  });
-
-  bot.once("spawn", () => {
-    console.log("✅ Bot successfully joined the server!");
-  });
-
-  // Anti-AFK (jumps every 25 seconds)
-  setInterval(() => {
-    if (!bot?.entity) return;
-    bot.setControlState("jump", true);
-    setTimeout(() => bot.setControlState("jump", false), 250);
-  }, 25000);
-
-  bot.on("time", () => {
-    if (bot.time?.delta) {
-      lastTPS = (20 / bot.time.delta).toFixed(2);
+    // Prevent double-init
+    if (bot) {
+        try { bot.end(); } catch (e) {}
     }
-  });
 
-  bot.on("physicTick", () => {
-    if (bot.player?.ping !== undefined) {
-      lastPing = bot.player.ping;
-    }
-  });
+    console.log("🚀 Attempting to connect to Aternos...");
+    
+    bot = mineflayer.createBot({
+        host: "larpingmc.aternos.me", // Updated to your server
+        port: 35370,                 // UPDATE THIS PORT TO MATCH ATERNOS
+        username: "Larping_Bot",
+        version: "1.21.1",
+        plugins: [AutoAuth],
+        AutoAuth: "bot112022" 
+    });
 
-  bot.on("end", (reason) => {
-    console.log(`Bot disconnected (${reason}). Reconnecting in 10 seconds...`);
-    setTimeout(createBot, 10000);
-  });
+    bot.on("spawn", () => {
+        console.log("✅ Bot joined the server!");
+    });
 
-  bot.on("error", (err) => {
-    console.log("Bot error:", err.message);
-  });
+    bot.on("chat", (username, message) => {
+        console.log(`[Chat] ${username}: ${message}`);
+    });
 
-  bot.on("kicked", (reason) => {
-    console.log("Kicked from server:", reason);
-  });
+    bot.on("error", (err) => {
+        console.log("❌ Bot error:", err.code);
+    });
+
+    bot.on("end", () => {
+        console.log("🔌 Disconnected. Retrying in 15 seconds...");
+        setTimeout(createBot, 15000);
+    });
 }
 
-// Start the bot
 createBot();
 
-// ====================== ROUTES ======================
-
-// Login Page
+// --- WEB PANEL ROUTES ---
 app.get("/login", (req, res) => {
-  res.send(`
-    <h2>🔐 Developer Login</h2>
-    <form method="POST" action="/login">
-      <input type="password" name="password" placeholder="Enter Password" style="padding:10px; width:250px;"/>
-      <button type="submit" style="padding:10px;">Login</button>
-    </form>
-  `);
+    res.send(`<h2>🔐 Dev Login</h2><form method="POST"><input type="password" name="password"/><button>Login</button></form>`);
 });
 
 app.post("/login", (req, res) => {
-  if (req.body.password === PANEL_PASSWORD) {
-    req.session.loggedIn = true;
+    if (req.body.password === PANEL_PASSWORD) {
+        req.session.loggedIn = true;
+        return res.redirect("/");
+    }
+    res.send("Wrong password");
+});
+
+app.get("/", auth, (req, res) => {
+    const status = bot?.entity ? "🟢 ONLINE" : "🔴 OFFLINE";
+    res.send(`
+        <h1>🤖 LarpingMC Bot Panel</h1>
+        <p>Status: ${status}</p>
+        <form method="POST" action="/chat">
+            <input name="message" placeholder="Message..."/>
+            <button>Send</button>
+        </form>
+        <br/><a href="/reconnect">Force Reconnect</a>
+    `);
+});
+
+app.post("/chat", auth, (req, res) => {
+    if (bot?.chat) bot.chat(req.body.message);
     res.redirect("/");
-  } else {
-    res.send("❌ Wrong password! <br><a href='/login'>Try again</a>");
-  }
 });
 
-// Main Panel
-app.get("/", isAuthenticated, (req, res) => {
-  const players = bot?.players ? Object.keys(bot.players) : [];
-  const status = bot?.entity ? "🟢 ONLINE" : "🔴 OFFLINE";
-
-  res.send(`
-    <h1>🤖 Minecraft Bot Panel</h1>
-    <p><strong>Status:</strong> ${status}</p>
-    <p><strong>Ping:</strong> ${lastPing} ms</p>
-    <p><strong>TPS:</strong> ${lastTPS}</p>
-    <p><strong>Players Online:</strong> ${players.length}</p>
-    <p><strong>Players:</strong> ${players.join(", ") || "No players"}</p>
-
-    <hr>
-    <h3>Send Chat Message</h3>
-    <form method="POST" action="/chat">
-      <input name="message" placeholder="Type message..." style="width:300px; padding:8px;"/>
-      <button type="submit">Send</button>
-    </form>
-
-    <br>
-    <a href="/reconnect"><button>🔄 Reconnect Bot</button></a>
-    <a href="/restart"><button>♻️ Restart Container</button></a>
-    <a href="/logout"><button>Logout</button></a>
-  `);
+app.get("/reconnect", auth, (req, res) => {
+    if (bot) bot.end(); // Use .end() instead of .quit()
+    res.redirect("/");
 });
 
-// Send Chat
-app.post("/chat", isAuthenticated, (req, res) => {
-  if (bot?.chat && req.body.message) {
-    bot.chat(req.body.message);
-  }
-  res.redirect("/");
-});
-
-// Reconnect Bot
-app.get("/reconnect", isAuthenticated, (req, res) => {
-  console.log("Manual reconnect requested");
-  createBot();
-  res.redirect("/");
-});
-
-// Restart Container
-app.get("/restart", isAuthenticated, (req, res) => {
-  res.send("Restarting container...");
-  setTimeout(() => process.exit(1), 500);
-});
-
-// Logout
-app.get("/logout", (req, res) => {
-  req.session.destroy(() => {
-    res.redirect("/login");
-  });
-});
-
-app.listen(PORT, () => {
-  console.log(`🚀 Developer Panel running on http://localhost:${PORT}`);
-});
+app.listen(PORT, () => console.log("🚀 Panel running on port", PORT));
